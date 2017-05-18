@@ -24,7 +24,7 @@ dev = pyrs.Device()
 # this is carry over from example code. def is a function definition
 # pass moves the code along without actually executing anything
 # this statement doesn't really do anything as currently written, but the nothing
-# function is call in "creatTrackbar" below
+# function is call in "createTrackbar" below
 def nothing(*arg):
     pass
 
@@ -63,8 +63,19 @@ while True:
     cv2.imshow('edge', cd)
     cv2.imshow('edge2',cd2)
     cv2.imshow('',vis)
+
+
+
+    ## CvVideoWriter * outStream = cvCreateVideoWriter(outFile, CV_FOURCC('M', 'J', 'P', 'G'), 2,
+    ##                                                   cvSize((int)(srcImg->width * percent / 100), (int)(
+    ##    srcImg->height * percent / 100)), true );
+    ## cvWriteFrame(outStream, srcImgRes)		//CvVideoWriter* outStream = cvCreateVideoWriter(outFile, CV_FOURCC('M','J','P','G'), 2, cvSize((int)(srcImg->width*percent/100), (int)(srcImg->height*percent/100)), true );
+    ##cvWriteFrame(outStream, srcImgRes)
+
     ch = cv2.waitKey(5)
     if ch == 27:
         break
+
+
 cv2.destroyAllWindows()
 

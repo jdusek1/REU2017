@@ -43,9 +43,9 @@ fps_smooth = 30
 
 # set the speed to start, from 0 (off) to 255 (max speed)
 myMotor.setSpeed(150)
-myMotor.run(Adafruit_MotorHAT.FORWARD);
+myMotor.run(Adafruit_MotorHAT.FORWARD)
 # turn off motor
-myMotor.run(Adafruit_MotorHAT.RELEASE);
+myMotor.run(Adafruit_MotorHAT.RELEASE)
 
 while (cnt<500):
     print cnt
@@ -56,6 +56,8 @@ while (cnt<500):
         print "Forward"
         myMotor.setSpeed(200)
         myMotor.run(Adafruit_MotorHAT.FORWARD)
+
+
     if cnt >= 250 :
         a += 1
         if a <= 200:
@@ -79,7 +81,6 @@ while (cnt<500):
 
     dev.wait_for_frame()
     c = dev.colour
-    c = cv2.cvtColor(c, cv2.COLOR_RGB2BGR)
     d = dev.depth * dev.depth_scale * 1000
     d = cv2.applyColorMap(d.astype(np.uint8), cv2.COLORMAP_RAINBOW)
 
