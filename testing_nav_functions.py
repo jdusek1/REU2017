@@ -1,4 +1,4 @@
-77#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
 from flask import Flask, render_template, Response
@@ -56,6 +56,11 @@ cs_m2 = 0
 cs_m3 = 0
 cs_m4 = 0
 
+# other variables to pass between threads:
+cX, cY = [0,0]
+mean_disp = 0
+yaw_error = 0
+
 def simple_lowpass(v_current, v_des):
     v_new = int(round(c0*v_current + c1*(v_des - v_current)))
     # watch out for negative numbers...
@@ -101,7 +106,6 @@ def forwardDrive(speed_con):
             speed_diffs[wheeli-1] = speed_con - v_new
             #print(wheeli)
             #print(v_new)
-
 
         # pause to make sure motors have time to get up to new speed
         time.sleep(wait_time)
@@ -206,118 +210,151 @@ def index():
     return render_template('./index.html')
 
 
+def depthmap_seg_nav(d_im_col):
+    # declare shared variables
+    global cX
+    global cY
+    global mean_disp
+    global yaw_error
+
+    # take colorised depth image and return a heading direction
+    # filter out 'background' (aka depth out of range).
+    d_im_gray = cv2.cvtColor(d_im_col, cv2.COLOR_BGR2GRAY)
+    d_thresh = cv2.adaptiveThreshold(d_im_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 3, 5)
+    # set background to zero
+    d_thresh[d_im_gray < 5] = 0
+
+    # erode to remove white noise
+    kernel = np.ones((2, 2), np.uint8)
+    opening = cv2.morphologyEx(d_thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+
+    # need to isolate regions, so distance transform to ensure they're separated
+    dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+    # threshold back to binary
+    _, sure_fg = cv2.threshold(dist_transform, 0.12 * dist_transform.max(), 255, 0)
+    sure_fg = np.uint8(sure_fg)
+
+    _, contours, hierarchy = cv2.findContours(sure_fg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # if intensity too subtle, could use hsv as base image, compare hue?
+    mean = 0
+    found_direction = 0
+    for cntr in contours:
+        # find large area with highest intensity (ie furthest away)
+        # this is very crude as misalignment could cause robot to look at ceiling/sky
+
+        if 1500 < cv2.contourArea(cntr):
+            cv2.drawContours(d_im_col, [cntr], 0, (0, 255, 0), 2)
+            mask = np.zeros(d_im_gray.shape, np.uint8)
+            cv2.drawContours(mask, [cntr], 0, (255, 255, 255), -1)
+            mean_new = cv2.mean(d_im_gray, mask)
+
+            if mean_new > mean:
+                mean = mean_new
+                # this is rather bodgy! should assign before loop instead of using flag
+                cntr_direction = cntr
+                found_direction = 1
+
+    if found_direction:
+        # if we have an updated direction - should usually get SOMETHING
+        # get centroid
+        M = cv2.moments(cntr_direction)
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+        mean_disp = mean[0]
+
+        # calculate vector direction, assuming centre of x axis is 0 heading
+        yaw_error = cX - (640/2) # change this if using smaller depth frame
+
+    return True
+
+#def depthmap_grad_map(d_raw):
+#    # take gradient of raw depth image
+#
+#    # use a strong smoothing filter to reduce features
+#    # look for local maxima?
+
+
 def gen(py_dev):
     running = True
-    global depth_stack
-    iLowH, iLowS, iLowV = [0,0,0]
+    frameint = 5
+    framecount = 0
 
-    iHighH, iHighS, iHighV = [179,255, 255]
+    # create nxn zeros and appropriate kernel
+    kernlen = 321
+    gauss_kern = cv2.getGaussianKernel(kernlen, 3)
+
+    dirac_im = np.zeros((kernlen, kernlen))
+    # set element at the middle to one, a dirac delta
+    dirac_im[kernlen//2, kernlen//2] = 1
+    # gaussian-smooth the dirac, resulting in a gaussian filter m
+    gauss_template = cv2.GaussianBlur(dirac_im, (kernlen, kernlen), 0) #cv2.filter2d(dirac_im, -1,  gauss_kern)
+    # normalise to check
+    max_g = max(gauss_template.max(axis=1))
+    gauss_display = np.array(255*gauss_template/max_g, dtype=np.uint8)
 
     while running:
+        framecount += 1
+
         py_dev.wait_for_frame()
         c_im = py_dev.colour
         rgb_im = c_im[...,::-1]
-        # try to scale with minimal wrap over effective range
+
+        # try to scale with minimal wrap over effective range - fairly heuristic
         # Note that most colormaps give darker values to closer items
         # we may want to invert this, intuitively
+        d_raw = py_dev.depth
         d_im = py_dev.depth*0.05
 
         # close holes without removing segmentation by doing it before converting to image
-        d_im_filt = scmorph.grey_closing(d_im, size=(7,7))
+        d_im_filt = scmorph.grey_closing(d_im, size=(7, 7))
 
-        # filter out 'background' (aka depth out of range).
+        # gradient method testing
+        # actually let's jut blur this image very heavily and see what we get
+        blur = cv2.GaussianBlur(d_im_filt, (71, 71), 0)
+        # we may want to restrict our analysis to a central 'band' of the image
+        # can use a mask in the template match for this
+
+        # Cross correlate a gaussian peaked function of size < image with the image
+        template_match = cv2.matchTemplate(blur, gauss_display, cv2.TM_CCORR_NORMED)
+
+        template_match = cv2.normalize(template_match, 0, 1, cv2.NORM_MINMAX)
+        normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+
+        // / Localizing
+        the
+        best
+        match
+        with minMaxLoc
+            double
+            minVal;
+            double
+            maxVal;
+            Point
+            minLoc;
+            Point
+            maxLoc;
+        Point
+        matchLoc;
+
+        minMaxLoc(result, & minVal, & maxVal, & minLoc, & maxLoc, Mat() );
+
         d_im_col = cv2.applyColorMap(d_im_filt.astype(np.uint8), cv2.COLORMAP_HOT)
-        d_im_gray = cv2.cvtColor(d_im_col, cv2.COLOR_BGR2GRAY)
-        d_thresh = cv2.adaptiveThreshold(d_im_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 3,5)
-        # set background to zero
-        d_thresh[d_im_gray < 5] = 0
 
-        # erode to remove white noise
-        # could also  dilate to remove holes (this may desegment the image though)
-        kernel = np.ones((2, 2), np.uint8)
-        opening = cv2.morphologyEx(d_thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+        # every nth frame, update direction by analysing depth map
+        # two options: segmentation or gradient. Segmentation is a problem with very noisy images 
+        if framecount > frameint:
+            #thread.start_new_thread(depthmap_seg_nav, (d_im_col, ))
+            framecount = 1
 
-        # need to isolate regions, so distance transform to ensure they're separated
-        dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,5)
-        # threshold back to binary
-        _, sure_fg = cv2.threshold(dist_transform,0.12*dist_transform.max(),255,0)
-        sure_fg = np.uint8(sure_fg)
+        # eventually replace this with an arrow indicating desired direction
+        cv2.circle(d_im_col, (cX, cY), 7, (255, 255, 255), -1)
+        cv2.putText(d_im_col, str(mean_disp), (cX - 20, cY - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-        _, contours, hierarchy = cv2.findContours( sure_fg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        # if intensity too subtle, could use hsv as base image, compare hue?
-        mean, stdev = [0,0]
-        d_im_show = d_im_gray
-
-        for cntr in contours:
-            if 1500<cv2.contourArea(cntr):
-                cv2.drawContours(d_im_col,[cntr],0,(0,255,0),2)
-                mask = np.zeros(d_im_col.shape, dtype="uint8")
-                # problem with masking
-                cv2.drawContours(mask, [cntr], 0,(255,255,255), -1)
-                # extract channel
-
-                mean = cv2.mean(d_im_gray, mask)
-                # get centroid
-                M = cv2.moments(cntr)
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                cv2.circle(d_im_col, (cX, cY), 7, (255, 255, 255), -1)
-                cv2.putText(d_im_col, str(mean), (cX - 20, cY - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-                print(mean)
-
-                d_im_show = mask
-                break
-
-
-        # use greyscale intensity within contour regions?
-       
-
-        # label regions (eg connectedComponents)
-        # label background with 0 to avoid inclusion in watershed
-        #unknown = cv2.subtract(d_thresh,sure_fg)
-        # Marker labelling
-        #_, markers = cv2.connectedComponents(sure_fg)
-
-        # Add one to all labels so that sure background is not 0, but 1
-        #markers = markers+1
-
-        # Now, mark the region of unknown with zero
-        #markers[unknown==255] = 0
-
-        # Apply watershed algorithm
-        #d_im_hsv = cv2.applyColorMap(d_im_filt.astype(np.uint8), cv2.COLORMAP_HSV)
-        #markers = cv2.watershed(d_im_hsv,markers)
-        # markers now stores color-based region information.
-        # find COM of brightest region (ie furthest distance) to obtain 1D directional vector
-        #M = cv2.moments(markers)
-        #cX = int(M["m10"] / M["m00"])
-        #cY = int(M["m01"] / M["m00"])
-
-        # output image
-        #d_im_hsv[markers == -1] = [0,0,0]
-        #cv2.circle(d_im_hsv, (cX, cY), 7, (255, 255, 255), -1)
-
-        # we can filter to reduce noise but this makes things run very slow
-        # so should use a much lower framerate in this case
-        # may not be quickest method - see later
-
-        #edge = cv2.Canny(blurred, 100, 255, apertureSize=5)
-        #ret, otsu = cv2.threshold(d_im_gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        # binary image in otsu
-        #d_tf = cv2.distanceTransform(otsu, cv2.DIST_L2, 3)
-        #d_tf = cv2.normalize(d_tf, 0, 1, cv2.NORM_MINMAX)
-        #_, contours, hierarchy = cv2.findContours( otsu, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        #d_im_col[edge != 0] = (0, 255, 0)
-
-        #for cntr in contours:
-        #    #if hierarchy[cntr][3] >= 0: # problem here
-        #    if 200<cv2.contourArea(cntr):
-        #     cv2.drawContours(d_im_col,[cntr],0,(0,255,0),2)
-
-        cd = d_im_show #np.concatenate((dist_transform, d_im_show), axis=1)
+        cd = gauss_display #np.concatenate((blur, gauss_template), axis=1)
         #cd = np.concatenate((rgb_im, d_im_col), axis=1)
         ret, frame = cv2.imencode('.jpg', cd)
+        # this is pretty slow over wifi
         jpeg_encode = frame.tobytes()
         yield(b'--frame\r\n'
               b'Content-Type: image/jpeg\r\n\r\n' + jpeg_encode + b'\r\n\r\n')
@@ -326,7 +363,7 @@ def gen(py_dev):
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(gen(pyrs.Device()),
+    return Response(gen(pyrs.Device(device_id = 0, streams = [pyrs.ColourStream(fps = 30), pyrs.DepthStream(fps=30)])),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
@@ -339,7 +376,8 @@ if __name__ == '__main__':
     pyrs.start()
     # Define a depth stack which can be declared global
     depth_stack = Stack()
-
+    # streaming over wifi is slow, so if not debugging recommend commenting out
+    # the threaded stream and uncommenting depth handling code in motor loop
     thread.start_new_thread(threaded_stream, ())
     cnt = 0
 
@@ -356,15 +394,19 @@ if __name__ == '__main__':
 
         if cnt == 2:
             print("Driving forward")
+            forwardDrive(400)
+
+        if cnt == 150:
+            print("slowing down")
             forwardDrive(200)
 
-    #    if cnt == 150:
-    #        print("slowing down")
-            # forwardDrive(100)
+        if cnt == 300:
+            print("Driving backward")
+            backwardDrive(200)
 
-    #    if cnt == 300:
-    #        print("Driving backward")
-            # backwardDrive(200)
+        if cnt == 600:
+            print("stopping")
+            forwardDrive(0)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             motorrunning=False
